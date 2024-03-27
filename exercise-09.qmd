@@ -1,0 +1,306 @@
+---
+title: "exercise-09"
+author: "Erika Carlson"
+date: 2024-03-20
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+# Exercise 09 {.unnumbered}
+
+# Practice Simple Linear Regression {.unnumbered}
+
+
+#### Step 1 {.unnumbered}
+
+* Load the "Street_et_al_2017.csv" dataset as a "tibble" named **d**.
+* Run exploratory data analysis of the five-number summary (median, minimum and maximum and 1st and 3rd quartile values), plus mean and standard deviation, for each quantitative variable.
+
+> **Data source**:
+>
+> Street SE, Navarrete AF, Reader SM, and Laland KN. (2017). Coevolution of cultural intelligence, extended life history, sociality, and brain size in primates. *Proceedings of the National Academy of Sciences* 114: 7908–7914.
+
+```{r}
+#| warning: false
+
+library(tidyverse)
+library(skimr)
+d <- read_csv("https://raw.githubusercontent.com/difiore/ada-2024-datasets/main/Street_et_al_2017.csv", 
+              col_names = TRUE)
+skim(d)
+```
+
+
+#### Step 2 {.unnumbered}
+
+* Plot brain size (**ECV**) as a function of social group size (**Group_size**), longevity (**Longevity**), juvenile period length (**Weaning**), and reproductive lifespan (**Repro_lifespan**).
+
+```{r}
+p1 <- ggplot(data = d %>% drop_na(ECV, Group_size), aes(y = ECV, x = Group_size)) +
+  geom_point() +
+  ylab("Brain size") + xlab("Social group size")
+
+p2 <- ggplot(data = d %>% drop_na(ECV, Longevity), aes(y = ECV, x = Longevity)) +
+  geom_point() +
+  ylab("Brain size") + xlab("Longevity")
+
+p3 <- ggplot(data = d %>% drop_na(ECV, Weaning), aes(y = ECV, x = Weaning)) +
+  geom_point() +
+  ylab("Brain size") + xlab("Weaning")
+
+p4 <- ggplot(data = d %>% drop_na(ECV, Repro_lifespan), aes(y = ECV, x = Repro_lifespan)) +
+  geom_point() +
+  ylab("Brain size") + xlab("Reproductive lifespan")
+
+library(ggpubr)
+ggarrange(p1, p2, p3, p4,
+          labels = NULL,
+          ncol = 2, nrow = 2)
+
+# better as log transformed
+d <- d %>% mutate(logECV = log(ECV), 
+                  logGS = log(Group_size))
+
+p1 <- ggplot(data = d %>% drop_na(logECV, logGS), aes(y = logECV, x = logGS)) +
+  geom_point() +
+  ylab("log(Brain size)") + xlab("log(Social group size)")
+
+p2 <- ggplot(data = d %>% drop_na(logECV, Longevity), aes(y = logECV, x = Longevity)) +
+  geom_point() +
+  ylab("log(Brain size)") + xlab("Longevity")
+
+p3 <- ggplot(data = d %>% drop_na(logECV, Weaning), aes(y = logECV, x = Weaning)) +
+  geom_point() +
+  ylab("log(Brain size)") + xlab("Weaning")
+
+p4 <- ggplot(data = d %>% drop_na(logECV, Repro_lifespan), aes(y = logECV, x = Repro_lifespan)) +
+  geom_point() +
+  ylab("log(Brain size)") + xlab("Reproductive lifespan")
+
+library(ggpubr)
+ggarrange(p1, p2, p3, p4,
+          labels = NULL,
+          ncol = 2, nrow = 2)
+```
+
+
+#### Step 3 {.unnumbered}
+
+* Derive by hand the ordinary least squares regression coefficients $\beta1$ and $\beta0$ for ECV as a function of social group size.
+
+```{r}
+# remove rows where one of these variables is missing
+d <- d %>% drop_na(logECV, logGS)
+
+# slope, beta_1 = correlation of response and predictor variables * ratio of sd of response and predictor
+(b1 <- cor(d$logECV, d$logGS) * (sd(d$logECV)/sd(d$logGS))) 
+
+# intercept, beta_0 = mean of response variable - b1 * mean of predictor variable
+(b0 <- mean(d$logECV) - b1*mean(d$logGS)) 
+```
+
+
+#### Step 4 {.unnumbered}
+
+* Confirm the `lm()` function yields the same results.
+
+```{r}
+lm(logECV ~ logGS, data = d)
+```
+
+
+#### Step 5 {.unnumbered}
+
+* Repeat the analysis above for three different major radiations of primates - "catarrhines", "platyrrhines", and "strepsirhines") separately. These are stored in the variable **Taxonomic_group**. Do your regression coefficients differ among groups? How might you determine this?
+
+```{r}
+(m_c <- lm(logECV ~ logGS, data = d %>% filter(Taxonomic_group == "Catarrhini")))
+
+(m_p <- lm(logECV ~ logGS, data = d %>% filter(Taxonomic_group == "Platyrrhini")))
+
+(m_s <- lm(logECV ~ logGS, data = d %>% filter(Taxonomic_group == "Strepsirhini")))
+```
+
+  + Test the difference between regression coefficients by adding Taxonomic_group as a factor with Catarrhini as reference group
+  
+```{r}
+m <- lm(logECV ~ logGS + as.factor(Taxonomic_group), data = d)
+summary(m)
+```
+
+* The regression coefficients appear to be different when separate regression analyses are run on each taxonomic group. I tested this by re-running the model with Taxonomic_group as a factor, and found a significant effect (p<0.05) of Taxonomic_group between Catarrhini and Platyrrhini as well as Catarrhini and Strepsirhini.
+  + The p value for individual coefficients is for the difference between the particular level mean and the first (or reference) level mean
+
+
+#### Step 6 {.unnumbered}
+
+* For the first regression of ECV on social group size, calculate the standard error for the slope coefficient, the 95% CI, and the *p* value associated with this coefficient by hand. Also extract this same information from the results of running the `lm()` function.
+  + Standard error of regression slope, beta_1 = Mean squared error divided by the sums of squares of x variable
+  + The test statistic = the value of the estimated regression coefficient divided by the estimate of the standard error for that coefficient (i.e., beta / SE_beta)
+
+```{r}
+m <- lm(logECV ~ logGS, data = d)
+
+# Univariate regression (one predictor, one response) estimates two parameters (beta coeffs)
+df_error <- nrow(d) - 1 - 1 # number of samples - (1 + number of predictor values)
+SSE <- sum((m$model$logECV - m$fitted.values) ^ 2) # SSE = logECV - predicted logECV
+MSE <- SSE/df_error # mean squared error
+SSX <- sum((d$logGS - mean(d$logGS)) ^ 2) # sum of squares of x
+
+# calculate standard error of regression slope coefficient, beta_1, by hand
+(se_b1 <- sqrt(MSE/SSX))
+
+# calculate beta_1 95% CI by hand
+alpha <- 0.05
+lower <- b1 - qt(1 - alpha/2, df = nrow(d) - 2) * se_b1
+upper <- b1 + qt(1 - alpha/2, df = nrow(d) - 2) * se_b1
+CI <- cbind(lower, upper)
+rownames(CI) <- c("log(Group size)")
+colnames(CI) <- c(paste0(as.character(alpha/2 * 100), " %"), paste0(as.character((1 -
+    alpha/2) * 100), " %"))
+CI
+
+# calculate beta_1 test statistic by hand
+(t_statistic <- (b1 - 0) / se_b1) # estimate - null / se
+
+# calculate beta_1 p-value by hand
+(p_value <- 2 * pt(t_statistic, df = nrow(d) - 2, lower.tail = FALSE))
+
+# contains model-generated se, t-statistic, and p-value for beta_1 (in logGS row)
+library(broom)
+m.summary <- tidy(m)
+m.summary
+```
+
+
+#### Step 7 {.unnumbered}
+
+* Use a permutation approach with 1000 permutations to generate a null sampling distribution for the **slope coefficient**. What is it that you need to permute? What is the p value associated with your original slope coefficient? You can use either the percentile method (i.e., using quantiles from the actual permutation-based null sampling distribution) or a theory-based method (i.e., using the standard deviation of the permutation-based null sampling distribution as the estimate of the standard error, along with a normal or t distribution), or both, to calculate this p value.
+
+```{r}
+#| warning: false
+
+# beta_1 null sampling distribution
+# generate a permutation distribution, breaking the association between predictor and response variable
+library(infer)
+
+set.seed <- 1
+
+permuted.slope <- d %>% 
+  specify(logECV ~ logGS) %>% # select the columns of interest AND declare their relationship
+  hypothesize(null = "independence") %>% # declare a null hypothesis 
+  generate(reps = 1000, type = "permute") %>% # construct a null distribution
+  calculate(stat = "slope") # calculates summary statistics from the output of infer core functions
+permuted.slope
+
+hist(permuted.slope$stat) # should be zero bounded (null = 0)
+
+visualize(permuted.slope) +
+  shade_p_value(obs_stat = b1, 
+                direction = "greater") # far away from distribution because p value associated is very tiny
+
+# to estimate a p-value from simulation, [1] identify the number of samples from the generated sampling distribution that are at least as large as our sample statistic, then [2] divide this result by the number of simulations.
+(p_perm <- sum(abs(permuted.slope$stat) >= abs(b1))/1000) # no samples are as large or larger than the original slope coefficient, so the p-value is calculated as 0
+
+# calculate b1_perm 95% CI by hand
+alpha <- 0.05
+lower <- mean(permuted.slope$stat) - qt(1 - alpha/2, df = nrow(permuted.slope) - 2) * (sd(permuted.slope$stat)/sqrt(nrow(permuted.slope)))
+upper <- mean(permuted.slope$stat) + qt(1 - alpha/2, df = nrow(permuted.slope) - 2) * (sd(permuted.slope$stat)/sqrt(nrow(permuted.slope)))
+CI_perm <- cbind(lower, upper)
+rownames(CI_perm) <- c("log(Group size)")
+colnames(CI_perm) <- c(paste0(as.character(alpha/2 * 100), " %"), paste0(as.character((1 -
+    alpha/2) * 100), " %"))
+CI_perm
+
+# can also calculate b1_perm p-value using {infer}
+(p_perm <- get_p_value(permuted.slope, t_statistic, direction = "both"))
+```
+
+* **Sample statistic** is a random variable whose values are generated from samples, such as the sample mean, the sample proportion, the difference in sample means, or sample proportions.
+
+* **Sampling distribution** of the sample statistic is the range of all its values together with their probabilities. For example, the distribution of the sample mean or sample proportion is approximately a normal distribution for large enough sample sizes.
+
+* **P-value** is the probability of getting values at least as extreme as our observed data, assuming the null hypothesis is true. Depending on whether the p-value is below or above a certain threshold, it is used to accept or reject the null hypothesis.
+
+
+#### Step 8 {.unnumbered}
+
+* Use bootstrapping to generate a 95% CI for your estimate of the slope coefficient using both the quantile method and the theory-based method (i.e., using on the standard deviation of the bootstrapped sampling distribution as an estimate of the standard error). Do these CIs suggest that your slope coefficient is different from zero? *Yes, the slope coefficient appears close to 0.7*
+
+For this approach, we define a custom function that we will use to generate the statistic we are interested in that we will then calculate for each bootstrapped sample:
+
+```{r}
+#| warning: false
+
+library(boot)
+# the `beta_1()` function calculates the mean value of a bootstrap sample taken 
+# with replacement from a vector of interest passed into `data`.
+# The function we write for `statistic=` has two arguments, a data set, 
+# and a set of indices which are generated at random by the `boot()` function to 
+# sample from the dataset. This corresponds to the default argument `stype='i'` 
+# in the `boot()` call
+beta_1 <- function(data, indices) {
+    return(cor(data$logGS[indices], data$logECV[indices]) * (sd(data$logECV)/sd(data$logGS)))
+}
+# referring to specific response/predictor columns within data, not flexible
+```
+
+Then, we run the `boot()` function passing in the data to be resampled from (“data=”), the statistic we want to calculate (“statistic=”), and the number of bootstrap replicates (or “resamples”) we want using the argument “R=”.
+
+```{r}
+set.seed <- 1
+
+n_boot <- 10000
+
+boot <- boot(data = d, statistic = beta_1, R = n_boot)  # stype='i' by default
+# the object returned includes a table, `t`, of `stat`s results from each
+# bootstrap
+```
+
+Calculate boot 95% CI by hand using quantile method (best way)
+
+```{r}
+alpha <- 0.05
+
+# ci bounds inferred from quantiles of bootstrap sampling distribution
+(ci_quantile <- quantile(boot$t, probs = c(alpha/2, 1 - alpha/2)))
+```
+
+Calculate boot 95% CI by hand using theoretical method
+
+```{r}
+# ci bounds inferred from *original sample mean* and sd of bootstrap sampling
+# distribution
+ci_theory <- qnorm(c(0.025, 0.975), mean = b1, sd = sd(boot$t))
+```
+
+```{r}
+ci_boot <- rbind(ci_quantile, ci_theory)
+ci_boot
+```
+
+##### Extra steps
+
+Plot the bootstrap sampling distribution
+
+```{r}
+# Visualizing the results and comparing methods for calculating CIs
+hist(boot$t, breaks = 25, ylim = c(0, 1500), xlab = "Mean", main = "Bootstrap Sampling Distribution\nfrom boot()")
+
+abline(v = mean(boot$t), col = "blue", lwd = 3)  # mean of our simulated samples
+text(x = mean(boot$t) + 0.02, y = 700, "mean of bootstrap distribution ", col = "blue",
+    srt = 90, pos = 3)
+```
+
+Use the `boot.ci()` function from the {boot} package to calculate CIs based on presumed theoretical shapes for the sampling distribution. The “basic” and “percent” intervals are the closest to the empirical quantile method.
+
+```{r}
+hist(boot$t, breaks = 25, ylim = c(0, 1500), xlab = "Mean", main = "Bootstrap Sampling Distribution\nfrom boot()")
+ci <- boot.ci(boot)
+abline(v = ci$basic[4], col = "green", lwd = 2) # based on normal distribution
+abline(v = ci$basic[5], col = "green", lwd = 2)
+abline(v = ci$percent[4], col = "red", lwd = 2)
+abline(v = ci$percent[5], col = "red", lwd = 2)
+```
+
